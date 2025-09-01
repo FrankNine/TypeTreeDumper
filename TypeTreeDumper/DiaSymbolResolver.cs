@@ -42,23 +42,29 @@ namespace TypeTreeDumper
 
             int InitializeAndGetCount()
             {
-                session.Value.Get()->get_globalScope(globalScope.GetAddressOf());
+                unsafe
+                {
+                    session.Value.Get()->get_globalScope(globalScope.GetAddressOf());
 
-                fixed (char* pExpression = expression.ToString())
-                    globalScope.Get()->findChildren(SymTagEnum.SymTagPublicSymbol, (ushort*)pExpression, (uint)options, enumSymbols.GetAddressOf());
+                    fixed (char* pExpression = expression.ToString())
+                        globalScope.Get()->findChildren(SymTagEnum.SymTagPublicSymbol, (ushort*)pExpression, (uint)options, enumSymbols.GetAddressOf());
 
-                int count;
-                enumSymbols.Get()->get_Count(&count);
-                return count;
+                    int count;
+                    enumSymbols.Get()->get_Count(&count);
+                    return count;
+                }
             }
 
             string GetSymbolName(int index)
             {
-                using ComPtr<IDiaSymbol> symbol = default;
-                enumSymbols.Get()->Item((uint)index, symbol.GetAddressOf());
-                ushort* name;
-                symbol.Get()->get_name(&name);
-                return new string((char*)name);
+                unsafe
+                {
+                    using ComPtr<IDiaSymbol> symbol = default;
+                    enumSymbols.Get()->Item((uint)index, symbol.GetAddressOf());
+                    ushort* name;
+                    symbol.Get()->get_name(&name);
+                    return new string((char*)name);
+                }
             }
         }
 
