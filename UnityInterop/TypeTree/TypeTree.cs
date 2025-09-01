@@ -1,77 +1,71 @@
-﻿using System;
+﻿namespace Unity;
+
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
-namespace Unity
+public unsafe partial class TypeTree
 {
-    public unsafe partial class TypeTree
+    readonly CommonString strings;
+    readonly ITypeTreeImpl tree;
+
+    public TypeTree(UnityVersion version, CommonString strings, SymbolResolver resolver)
     {
-        readonly CommonString strings;
+        if (version < UnityVersion.Unity3_5)
+            tree = new V3_4(this, resolver);
+        else if (version < UnityVersion.Unity4_0)
+            tree = new V3_5(this, resolver);
+        else if (version < UnityVersion.Unity5_0)
+            tree = new V4_0(this, resolver);
+        else if (version < UnityVersion.Unity5_3)
+            tree = new V5_0(this, resolver);
+        else if (version < UnityVersion.Unity2019_1)
+            tree = new V5_3(this, resolver);
+        else if (version < UnityVersion.Unity2019_3)
+            tree = new V2019_1(this, resolver);
+        else if (version < UnityVersion.Unity2022_2)
+            tree = new V2019_3(this, resolver);
+        else if (version < UnityVersion.Unity2023_1_0a2)
+            tree = new V2022_2(this, resolver);
+        else
+            tree = new V2023_1(this, resolver);
 
-        readonly ITypeTreeImpl tree;
+        this.strings = strings;
+    }
 
-        public TypeTree(UnityVersion version, CommonString strings, SymbolResolver resolver)
+    public ref byte GetPinnableReference()
+        => ref tree.GetPinnableReference();
+
+    public string GetString(uint offset)
+    {
+        if (offset > int.MaxValue)
+            return Marshal.PtrToStringAnsi((IntPtr)(strings.BufferBegin + (int)(int.MaxValue & offset)));
+
+        string str = "";
+        for (int i = (int)offset; tree.StringBuffer[i] != 0; i++)
         {
-            if (version < UnityVersion.Unity3_5)
-                tree = new V3_4(this, resolver);
-            else if (version < UnityVersion.Unity4_0)
-                tree = new V3_5(this, resolver);
-            else if (version < UnityVersion.Unity5_0)
-                tree = new V4_0(this, resolver);
-            else if (version < UnityVersion.Unity5_3)
-                tree = new V5_0(this, resolver);
-            else if (version < UnityVersion.Unity2019_1)
-                tree = new V5_3(this, resolver);
-            else if (version < UnityVersion.Unity2019_3)
-                tree = new V2019_1(this, resolver);
-            else if (version < UnityVersion.Unity2022_2)
-                tree = new V2019_3(this, resolver);
-            else if (version < UnityVersion.Unity2023_1_0a2)
-                tree = new V2022_2(this, resolver);
-            else
-                tree = new V2023_1(this, resolver);
-
-            this.strings = strings;
+            str += (char)tree.StringBuffer[i];
         }
 
-        public ref byte GetPinnableReference()
-        {
-            return ref tree.GetPinnableReference();
-        }
+        return str;
+    }
 
-        public string GetString(uint offset)
-        {
-            if (offset > int.MaxValue)
-                return Marshal.PtrToStringAnsi((IntPtr)(strings.BufferBegin + (int)(int.MaxValue & offset)));
+    public void CreateNodes()
+        => tree.CreateNodes(this);
 
-            string str = "";
-            for(int i = (int)offset; tree.StringBuffer[i] != 0; i++)
-            {
-                str += (char)tree.StringBuffer[i];
-            }
-            return str;
-        }
+    public TypeTreeNode this[int index] => tree.Nodes[index];
 
-        public void CreateNodes()
-        {
-            tree.CreateNodes(this);
-        }
+    public int Count => tree.Nodes.Count;
 
-        public TypeTreeNode this[int index] => tree.Nodes[index];
+    public IReadOnlyList<byte> StringBuffer => tree.StringBuffer;
+    public IReadOnlyList<uint> ByteOffsets => tree.ByteOffsets;
 
-        public int Count => tree.Nodes.Count;
-
-        public IReadOnlyList<byte> StringBuffer => tree.StringBuffer;
-
-        public IReadOnlyList<uint> ByteOffsets => tree.ByteOffsets;
-
-        interface ITypeTreeImpl
-        {
-            IReadOnlyList<byte> StringBuffer { get; }
-            IReadOnlyList<TypeTreeNode> Nodes { get; }
-            IReadOnlyList<uint> ByteOffsets { get; }
-            ref byte GetPinnableReference();
-            void CreateNodes(TypeTree tree);
-        }
+    interface ITypeTreeImpl
+    {
+        IReadOnlyList<byte> StringBuffer { get; }
+        IReadOnlyList<TypeTreeNode> Nodes { get; }
+        IReadOnlyList<uint> ByteOffsets { get; }
+        ref byte GetPinnableReference();
+        void CreateNodes(TypeTree tree);
     }
 }

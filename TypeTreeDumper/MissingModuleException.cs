@@ -1,58 +1,45 @@
-﻿using System;
+﻿namespace TypeTreeDumper;
 
-namespace TypeTreeDumper
+using System;
+
+public sealed class MissingModuleException : Exception
 {
-    public sealed class MissingModuleException : Exception
+    private const string DefaultMessage = "The specified module could not be found.";
+
+    public string ModuleName { get; }
+
+    public MissingModuleException()
+        : base(DefaultMessage) { }
+
+    public MissingModuleException(Exception inner)
+        : base(DefaultMessage, inner) { }
+
+    public MissingModuleException(string moduleName)
+        : base(DefaultMessage)
+        => ModuleName = moduleName;
+
+    public MissingModuleException(string moduleName, Exception inner)
+        : base(DefaultMessage, inner)
+        => ModuleName = moduleName;
+
+    public MissingModuleException(string moduleName, string message)
+        : base(message)
+        => ModuleName = moduleName;
+
+    public MissingModuleException(string moduleName, string message, Exception inner)
+        : base(message, inner)
+        => ModuleName = moduleName;
+
+    public override string Message
     {
-        const string DefaultMessage = "The specified module could not be found.";
-
-        public string ModuleName { get; }
-
-        public MissingModuleException()
-            : base(DefaultMessage)
+        get
         {
-        }
+            var message = base.Message;
 
-        public MissingModuleException(Exception inner)
-            : base(DefaultMessage, inner)
-        {
-        }
+            if (!string.IsNullOrEmpty(message) && !string.IsNullOrEmpty(ModuleName))
+                message += $" ({ModuleName})";
 
-        public MissingModuleException(string moduleName)
-            : base(DefaultMessage)
-        {
-            ModuleName = moduleName;
-        }
-
-        public MissingModuleException(string moduleName, Exception inner)
-            : base(DefaultMessage, inner)
-        {
-            ModuleName = moduleName;
-        }
-
-        public MissingModuleException(string moduleName, string message)
-            : base(message)
-        {
-            ModuleName = moduleName;
-        }
-
-        public MissingModuleException(string moduleName, string message, Exception inner)
-            : base(message, inner)
-        {
-            ModuleName = moduleName;
-        }
-
-        public override string Message
-        {
-            get
-            {
-                var message = base.Message;
-
-                if (!string.IsNullOrEmpty(message) && !string.IsNullOrEmpty(ModuleName))
-                    message += $" ({ModuleName})";
-
-                return message;
-            }
+            return message;
         }
     }
 }

@@ -1,15 +1,14 @@
-﻿using System;
+﻿namespace TypeTreeDumper;
 
-namespace TypeTreeDumper
+using System;
+
+[Flags]
+internal enum NameSearchOptions : uint
 {
-    [Flags]
-    enum NameSearchOptions : uint
-    {
-        None,
-        CaseSensitive     = 1 << 0,
-        CaseInsensitive   = 1 << 1,
-        FileNameExtension = 1 << 2,
-        RegularExpression = 1 << 3,
-        UndecoratedName   = 1 << 4,
-    }
+    None,
+    CaseSensitive = 1 << 0,
+    CaseInsensitive = 1 << 1,
+    FileNameExtension = 1 << 2,
+    RegularExpression = 1 << 3,
+    UndecoratedName = 1 << 4
 }
