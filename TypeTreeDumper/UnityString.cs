@@ -1,54 +1,52 @@
-﻿using System.Collections.Generic;
+﻿namespace TypeTreeDumper;
+
 using System.IO;
 using System.Text;
+using System.Collections.Generic;
+
 using Unity;
 
-namespace TypeTreeDumper
+internal class UnityString
 {
-    internal class UnityString
-    {
-        public uint Index { get; set; }
-        public string String { get; set; }
+	public uint Index { get; set; }
+	public string String { get; set; }
 
-		internal unsafe static List<UnityString> MakeList(CommonString strings)
+	internal static unsafe List<UnityString> MakeList(CommonString strings)
+	{
+		var data = strings.GetData();
+		var result = new List<UnityString>();
+
+		fixed (byte* pData = data)
 		{
-			var data = strings.GetData();
-			var result = new List<UnityString>();
-
-			fixed (byte* pData = data)
+			using var stream = new UnmanagedMemoryStream(pData, data.Length);
+			using var reader = new BinaryReader(stream);
+			while (stream.Position < stream.Length)
 			{
-				using (var stream = new UnmanagedMemoryStream(pData, data.Length))
-				{
-					using (var reader = new BinaryReader(stream))
-					{
-						while (stream.Position < stream.Length)
-						{
-							uint position = (uint)stream.Position;
-							string str = ReadStringToNull(reader);
-							result.Add(new UnityString() { Index = position, String = str });
-						}
-					}
-				}
+				uint position = (uint)stream.Position;
+				string str = ReadStringToNull(reader);
+				result.Add(new UnityString { Index = position, String = str });
 			}
-
-			return result;
 		}
 
-		private static string ReadStringToNull(BinaryReader reader, int maxLength = 32767)
+		return result;
+	}
+
+	private static string ReadStringToNull(BinaryReader reader, int maxLength = 32767)
+	{
+		var bytes = new List<byte>();
+		int count = 0;
+		while (reader.BaseStream.Position != reader.BaseStream.Length && count < maxLength)
 		{
-			var bytes = new List<byte>();
-			int count = 0;
-			while (reader.BaseStream.Position != reader.BaseStream.Length && count < maxLength)
+			var b = reader.ReadByte();
+			if (b == 0)
 			{
-				var b = reader.ReadByte();
-				if (b == 0)
-				{
-					break;
-				}
-				bytes.Add(b);
-				count++;
+				break;
 			}
-			return Encoding.UTF8.GetString(bytes.ToArray());
+
+			bytes.Add(b);
+			count++;
 		}
+
+		return Encoding.UTF8.GetString(bytes.ToArray());
 	}
 }

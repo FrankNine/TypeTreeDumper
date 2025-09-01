@@ -1,179 +1,170 @@
-﻿using System.Collections.Generic;
+﻿namespace Unity;
+
+using System;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+
 using ManagedTypeTree = Unity.TypeTree;
-using System;
-using System.Text.RegularExpressions;
-using System.Linq;
-using System.IO;
 
-namespace Unity
+public partial class TypeTree
 {
-    public partial class TypeTree
+    unsafe class V4_0 : ITypeTreeImpl
     {
-        unsafe class V4_0 : ITypeTreeImpl
+        internal struct TypeTree
         {
-            readonly delegate* unmanaged[Thiscall]<TypeTreeString*, sbyte*> s_CStr;
+            public TypeTreeList m_Children;
+            public TypeTree* m_Father;
+            public TypeTreeString m_Type;
+            public TypeTreeString m_Name;
+            public int m_ByteSize;
+            public int m_Index;
+            public int m_IsArray;
+            public int m_Version;
+            public TransferMetaFlags m_MetaFlag;
+            public int m_ByteOffset;
+            public void* m_DirectPtr;
+        }
 
-            internal TypeTree Tree;
+        internal struct TypeTreeListNode
+        {
+            public TypeTreeListNode* Next;
+            public TypeTreeListNode* Prev;
+            public TypeTree Value;
+        }
 
-            public IReadOnlyList<byte> StringBuffer => m_StringBuffer;
+        internal struct TypeTreeList
+        {
+            public TypeTreeListNode* Head;
+            public uint Size;
+            public int Padding1;
+            public int Padding2;
+        };
 
-            public IReadOnlyList<TypeTreeNode> Nodes => m_Nodes;
+        readonly delegate* unmanaged[Thiscall]<TypeTreeString*, sbyte*> s_CStr;
 
-            public IReadOnlyList<uint> ByteOffsets => m_ByteOffsets;
+        private TypeTree Tree;
 
-            private List<uint> m_ByteOffsets;
+        private List<uint> m_ByteOffsets;
+        private List<TypeTreeNode> m_Nodes;
+        private List<byte> m_StringBuffer;
+        private Dictionary<string, uint> m_StringBufferIndices;
+        private StreamWriter sw;
 
-            private List<TypeTreeNode> m_Nodes;
+        public IReadOnlyList<uint> ByteOffsets => m_ByteOffsets;
+        public IReadOnlyList<TypeTreeNode> Nodes => m_Nodes;
+        public IReadOnlyList<byte> StringBuffer => m_StringBuffer;
 
-            private List<byte> m_StringBuffer;
+        public V4_0(ManagedTypeTree owner, SymbolResolver resolver)
+        {
+            TypeTree tree;
+            var constructor = (delegate* unmanaged[Thiscall]<TypeTree*, void>)resolver.Resolve("??0TypeTree@@QAE@XZ");
+            constructor(&tree);
+            Tree = tree;
 
-            private Dictionary<string, uint> m_StringBufferIndices;
+            s_CStr = (delegate* unmanaged[Thiscall]<TypeTreeString*, sbyte*>)resolver.ResolveFirstMatch(
+                new Regex(Regex.Escape("?c_str@?$basic_string@") + "*"));
+        }
 
-            private StreamWriter sw;
+        public ref byte GetPinnableReference()
+            => ref Unsafe.As<TypeTree, byte>(ref Tree);
 
-            public V4_0(ManagedTypeTree owner, SymbolResolver resolver)
+        public void CreateNodes(ManagedTypeTree owner)
+        {
+            //Debugger.Launch();
+            m_StringBuffer = [];
+            m_StringBufferIndices = new Dictionary<string, uint>();
+            m_Nodes = [];
+            m_ByteOffsets = [];
+            var tts = Tree.m_Type;
+            var type = Marshal.PtrToStringAnsi((IntPtr)s_CStr(&tts));
+            sw = new StreamWriter($"{type}.txt");
+            CreateNodes(owner, ref m_Nodes, ref Tree);
+            sw.Dispose();
+        }
+
+        private void CreateNodes(ManagedTypeTree owner, ref List<TypeTreeNode> nodes, ref TypeTree tree, int level = 0)
+        {
+            var typeIndex = GetOrCreateStringIndex(tree.m_Type);
+            var type = m_StringBufferIndices.First(kv => kv.Value == typeIndex).Key;
+            var nameIndex = GetOrCreateStringIndex(tree.m_Name);
+            var name = m_StringBufferIndices.First(kv => kv.Value == nameIndex).Key;
+            var nodeImpl = new TypeTreeNode.V1(
+                version: (short)tree.m_Version,
+                level: (byte)level,
+                typeFlags: (TypeFlags)tree.m_IsArray,
+                typeStrOffset: typeIndex,
+                nameStrOffset: nameIndex,
+                byteSize: tree.m_ByteSize,
+                index: tree.m_Index,
+                metaFlag: tree.m_MetaFlag);
+            nodes.Add(new TypeTreeNode(nodeImpl, owner));
+            m_ByteOffsets.Add((uint)tree.m_ByteOffset);
+            sw.WriteLine("{0}Type: {1} Name: {2}: Children: {3} Padding1: {4} Padding2: {5}",
+                new string(' ', level),
+                type,
+                name,
+                tree.m_Children.Size,
+                tree.m_Children.Padding1,
+                tree.m_Children.Padding2);
+            var node = tree.m_Children.Head;
+            for(int i = 0; i < tree.m_Children.Size; i++)
             {
-                TypeTree tree;
-                var constructor = (delegate* unmanaged[Thiscall]<TypeTree*, void>)resolver.Resolve("??0TypeTree@@QAE@XZ");
-                constructor(&tree);
-                Tree = tree;
-
-                s_CStr = (delegate* unmanaged[Thiscall]<TypeTreeString*, sbyte*>)resolver.ResolveFirstMatch(
-                    new Regex(Regex.Escape("?c_str@?$basic_string@") + "*"));
-            }
-
-            public ref byte GetPinnableReference()
-            {
-                return ref Unsafe.As<TypeTree, byte>(ref Tree);
-            }
-
-            public void CreateNodes(ManagedTypeTree owner)
-            {
-                //Debugger.Launch();
-                m_StringBuffer = new List<byte>();
-                m_StringBufferIndices = new Dictionary<string, uint>();
-                m_Nodes = new List<TypeTreeNode>();
-                m_ByteOffsets = new List<uint>();
-                var tts = Tree.m_Type;
-                var type = Marshal.PtrToStringAnsi((IntPtr)s_CStr(&tts));
-                sw = new StreamWriter($"{type}.txt");
-                CreateNodes(owner, ref m_Nodes, ref Tree);
-                sw.Dispose();
-            }
-
-            public void CreateNodes(ManagedTypeTree owner, ref List<TypeTreeNode> nodes, ref TypeTree tree, int level = 0)
-            {
-                var typeIndex = GetOrCreateStringIndex(tree.m_Type);
-                var type = m_StringBufferIndices.First(kv => kv.Value == typeIndex).Key;
-                var nameIndex = GetOrCreateStringIndex(tree.m_Name);
-                var name = m_StringBufferIndices.First(kv => kv.Value == nameIndex).Key;
-                var nodeImpl = new TypeTreeNode.V1(
-                    version: (short)tree.m_Version,
-                    level: (byte)level,
-                    typeFlags: (TypeFlags)tree.m_IsArray,
-                    typeStrOffset: typeIndex,
-                    nameStrOffset: nameIndex,
-                    byteSize: tree.m_ByteSize,
-                    index: tree.m_Index,
-                    metaFlag: tree.m_MetaFlag);
-                nodes.Add(new TypeTreeNode(nodeImpl, owner));
-                m_ByteOffsets.Add((uint)tree.m_ByteOffset);
-                sw.WriteLine("{0}Type: {1} Name: {2}: Children: {3} Padding1: {4} Padding2: {5}",
-                    new string(' ', level),
-                    type,
-                    name,
-                    tree.m_Children.Size,
-                    tree.m_Children.Padding1,
-                    tree.m_Children.Padding2);
-                var node = tree.m_Children.Head;
-                for(int i = 0; i < tree.m_Children.Size; i++)
-                {
-                    node = node->Next;
-                    var child = node->Value;
-                    CreateNodes(owner, ref nodes, ref child, level + 1);
-                }
-            }
-
-            uint GetOrCreateStringIndex(TypeTreeString typeTreeString)
-            {
-                var tts = typeTreeString;
-                var str = Marshal.PtrToStringAnsi((IntPtr)s_CStr(&tts));
-                if (m_StringBufferIndices.TryGetValue(str, out var key))
-                {
-                    return key;
-                }
-                var newKey = (uint)m_StringBuffer.Count;
-                m_StringBufferIndices[str] = newKey;
-                foreach (byte b in str)
-                {
-                    m_StringBuffer.Add(b);
-                }
-                m_StringBuffer.Add(0);
-                return newKey;
-            }
-
-            [StructLayout(LayoutKind.Explicit)]
-            internal struct TypeTreeString
-            {
-                [FieldOffset(0)]
-                fixed byte Buffer[16];
-                [FieldOffset(0)]
-                IntPtr Ptr;
-                [FieldOffset(16)]
-                uint Size;
-                [FieldOffset(20)]
-                uint Reserved;
-                [FieldOffset(24)]
-                uint Padding;
-
-                public override string ToString()
-                {
-                    if (Size < 16)
-                    {
-                        string result = "";
-                        for(int i = 0; i < Size; i++)
-                        {
-                            result += (char)Buffer[i];
-                        }
-                        return result;
-                    } else
-                    {
-                        return Marshal.PtrToStringAnsi(Ptr);
-                    }
-                }
-            };
-
-            internal unsafe struct TypeTreeList
-            {
-                public TypeTreeListNode* Head;
-                public uint Size;
-                public int Padding1;
-                public int Padding2;
-            };
-
-            internal unsafe struct TypeTreeListNode
-            {
-                public TypeTreeListNode* Next;
-                public TypeTreeListNode* Prev;
-                public TypeTree Value;
-            }
-
-            internal struct TypeTree
-            {
-                public TypeTreeList m_Children;
-                public TypeTree* m_Father;
-                public TypeTreeString m_Type;
-                public TypeTreeString m_Name;
-                public int m_ByteSize;
-                public int m_Index;
-                public int m_IsArray;
-                public int m_Version;
-                public TransferMetaFlags m_MetaFlag;
-                public int m_ByteOffset;
-                public void* m_DirectPtr;
+                node = node->Next;
+                var child = node->Value;
+                CreateNodes(owner, ref nodes, ref child, level + 1);
             }
         }
+
+        private uint GetOrCreateStringIndex(TypeTreeString typeTreeString)
+        {
+            var tts = typeTreeString;
+            var str = Marshal.PtrToStringAnsi((IntPtr)s_CStr(&tts));
+            if (m_StringBufferIndices.TryGetValue(str, out var key))
+            {
+                return key;
+            }
+            var newKey = (uint)m_StringBuffer.Count;
+            m_StringBufferIndices[str] = newKey;
+            foreach (byte b in str)
+            {
+                m_StringBuffer.Add(b);
+            }
+            m_StringBuffer.Add(0);
+            return newKey;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        internal struct TypeTreeString
+        {
+            [FieldOffset(0)]
+            fixed byte Buffer[16];
+            [FieldOffset(0)]
+            IntPtr Ptr;
+            [FieldOffset(16)]
+            uint Size;
+            [FieldOffset(20)]
+            uint Reserved;
+            [FieldOffset(24)]
+            uint Padding;
+
+            public override string ToString()
+            {
+                if (Size < 16)
+                {
+                    string result = "";
+                    for(int i = 0; i < Size; i++)
+                    {
+                        result += (char)Buffer[i];
+                    }
+                    return result;
+                }
+
+                return Marshal.PtrToStringAnsi(Ptr);
+            }
+        };
     }
 }

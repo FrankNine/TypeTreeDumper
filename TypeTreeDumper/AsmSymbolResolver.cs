@@ -1,16 +1,19 @@
-﻿using AsmResolver.PE.File;
-using AsmResolver.Symbols.Pdb;
-using AsmResolver.Symbols.Pdb.Records;
+﻿namespace TypeTreeDumper;
+
 using System;
+using System.IO;
+using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
-using System.Linq;
 using System.Text.RegularExpressions;
+
+using AsmResolver.PE.File;
+using AsmResolver.Symbols.Pdb;
+using AsmResolver.Symbols.Pdb.Records;
+
 using Unity;
 
-namespace TypeTreeDumper;
 internal class AsmSymbolResolver : SymbolResolver
 {
     readonly ProcessModule module;
@@ -60,11 +63,14 @@ internal class AsmSymbolResolver : SymbolResolver
     }
 
     protected override unsafe void* GetAddressOrZero(string name)
-    {
-        return cache.TryGetValue(name, out uint offset) ? (void*)(BaseAddress + (nint)offset) : default;
-    }
+        => cache.TryGetValue(name, out uint offset) ? (void*)(BaseAddress + (nint)offset) : null;
 
-    private static bool TryGetPaths(ProcessModule module, [MaybeNullWhen(false)] out string exePath, [MaybeNullWhen(false)] out string pdbPath)
+    private static bool TryGetPaths
+    (
+        ProcessModule module, 
+        [MaybeNullWhen(false)] out string exePath, 
+        [MaybeNullWhen(false)] out string pdbPath
+    )
     {
         exePath = module.FileName;
         if (string.IsNullOrEmpty(exePath))
@@ -74,7 +80,7 @@ internal class AsmSymbolResolver : SymbolResolver
         }
 
         string pathWithoutExtension = Path.ChangeExtension(exePath, null);
-        foreach (string suffix in new string[] { ".pdb", "_x64.pdb" })
+        foreach (string suffix in new[] { ".pdb", "_x64.pdb" })
         {
             string path = pathWithoutExtension + suffix;
             if (File.Exists(path))

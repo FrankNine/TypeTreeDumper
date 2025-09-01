@@ -1,10 +1,10 @@
-﻿using System;
+﻿namespace TypeTreeDumper;
+
+using System;
+
 using Unity;
 
-namespace TypeTreeDumper
+public interface IDumperEngine
 {
-    public interface IDumperEngine
-    {
-        event Action<UnityEngine, ExportOptions> OnExportCompleted;
-    }
+    event Action<UnityEngine, ExportOptions> OnExportCompleted;
 }

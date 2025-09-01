@@ -1,31 +1,28 @@
-﻿using System;
-using System.Runtime.InteropServices;
+﻿namespace Unity;
 
-namespace Unity
+using System;
+
+public unsafe class CommonString
 {
-    public unsafe class CommonString
+    public sbyte* BufferBegin { get; }
+    public sbyte* BufferEnd { get; }
+
+    public CommonString(SymbolResolver resolver)
     {
-        public sbyte* BufferBegin { get; }
+        if (resolver.TryResolve($"?BufferBegin@CommonString@Unity@@3Q{NameMangling.Ptr64}BD{NameMangling.Ptr64}B", out void* begin))
+            BufferBegin = *(sbyte**)begin;
 
-        public sbyte* BufferEnd { get; }
+        if (resolver.TryResolve($"?BufferEnd@CommonString@Unity@@3Q{NameMangling.Ptr64}BD{NameMangling.Ptr64}B", out void* end))
+            BufferEnd = *(sbyte**)end;
+    }
 
-        public CommonString(SymbolResolver resolver)
-        {
-            if (resolver.TryResolve($"?BufferBegin@CommonString@Unity@@3Q{NameMangling.Ptr64}BD{NameMangling.Ptr64}B", out void* begin))
-                BufferBegin = *(sbyte**)begin;
+    public ReadOnlySpan<byte> GetData()
+    {
+        if (BufferBegin == null || BufferEnd == null)
+            return ReadOnlySpan<byte>.Empty;
 
-            if (resolver.TryResolve($"?BufferEnd@CommonString@Unity@@3Q{NameMangling.Ptr64}BD{NameMangling.Ptr64}B", out void* end))
-                BufferEnd = *(sbyte**)end;
-        }
-
-        public unsafe ReadOnlySpan<byte> GetData()
-        {
-            if (BufferBegin == null || BufferEnd == null)
-                return ReadOnlySpan<byte>.Empty;
-
-            var source = (byte*)BufferBegin;
-            var length = (byte*)BufferEnd - source - 1;
-            return new ReadOnlySpan<byte>(source, (int)length);
-        }
+        var source = (byte*)BufferBegin;
+        var length = (byte*)BufferEnd - source - 1;
+        return new ReadOnlySpan<byte>(source, (int)length);
     }
 }

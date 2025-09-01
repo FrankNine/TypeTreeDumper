@@ -1,59 +1,52 @@
-﻿using System;
-using System.Runtime.InteropServices;
+﻿namespace Unity;
 
-namespace Unity
+public unsafe class TypeTreeFactory
 {
-    public unsafe class TypeTreeFactory
+    private readonly UnityVersion version;
+    private readonly CommonString strings;
+    private readonly SymbolResolver resolver;
+
+    readonly delegate* unmanaged[Cdecl]<void*, TransferInstructionFlags, void*, byte> getTypeTree;
+    readonly delegate* unmanaged[Cdecl]<void*, void*, TransferInstructionFlags, void> generateTypeTree;
+
+    private bool HasGetTypeTree => version.Major >= 2019;
+
+    public TypeTreeFactory(UnityVersion version, CommonString strings, SymbolResolver resolver)
     {
-        readonly CommonString strings;
+        this.version  = version;
+        this.resolver = resolver;
+        this.strings  = strings;
 
-        readonly UnityVersion version;
-
-        readonly SymbolResolver resolver;
-
-        readonly delegate* unmanaged[Cdecl]<void*, TransferInstructionFlags, void*, byte> getTypeTree;
-
-        readonly delegate* unmanaged[Cdecl]<void*, void*, TransferInstructionFlags, void> generateTypeTree;
-
-        bool HasGetTypeTree => version.Major >= 2019;
-
-        public TypeTreeFactory(UnityVersion version, CommonString strings, SymbolResolver resolver)
+        if (HasGetTypeTree)
+            getTypeTree = (delegate* unmanaged[Cdecl]<void*, TransferInstructionFlags, void*, byte>)resolver.Resolve($"?GetTypeTree@TypeTreeCache@@YA_NP{NameMangling.Ptr64}BVObject@@W4TransferInstructionFlags@@A{NameMangling.Ptr64}AVTypeTree@@@Z");
+        else
         {
-            this.version  = version;
-            this.resolver = resolver;
-            this.strings  = strings;
+            generateTypeTree = (delegate* unmanaged[Cdecl]<void*, void*, TransferInstructionFlags, void>)resolver.Resolve(
+                $"?GenerateTypeTree@@YAXA{NameMangling.Ptr64}BVObject@@A{NameMangling.Ptr64}AVTypeTree@@W4TransferInstructionFlags@@@Z",
+                $"?GenerateTypeTree@@YAXA{NameMangling.Ptr64}AVObject@@P{NameMangling.Ptr64}AVTypeTree@@W4TransferInstructionFlags@@@Z",
+                $"?GenerateTypeTree@@YAXA{NameMangling.Ptr64}AVObject@@P{NameMangling.Ptr64}AVTypeTree@@H@Z"
+            );
+        }
+    }
 
+    public TypeTree GetTypeTree(NativeObject @object, TransferInstructionFlags flags)
+    {
+        var tree = new TypeTree(version, strings, resolver);
+
+        fixed (byte* pointer = tree)
+        {
             if (HasGetTypeTree)
-                getTypeTree = (delegate* unmanaged[Cdecl]<void*, TransferInstructionFlags, void*, byte>)resolver.Resolve($"?GetTypeTree@TypeTreeCache@@YA_NP{NameMangling.Ptr64}BVObject@@W4TransferInstructionFlags@@A{NameMangling.Ptr64}AVTypeTree@@@Z");
+            {
+                getTypeTree(@object.Pointer, flags, pointer);
+            }
             else
             {
-                generateTypeTree = (delegate* unmanaged[Cdecl]<void*, void*, TransferInstructionFlags, void>)resolver.Resolve(
-                    $"?GenerateTypeTree@@YAXA{NameMangling.Ptr64}BVObject@@A{NameMangling.Ptr64}AVTypeTree@@W4TransferInstructionFlags@@@Z",
-                    $"?GenerateTypeTree@@YAXA{NameMangling.Ptr64}AVObject@@P{NameMangling.Ptr64}AVTypeTree@@W4TransferInstructionFlags@@@Z",
-                    $"?GenerateTypeTree@@YAXA{NameMangling.Ptr64}AVObject@@P{NameMangling.Ptr64}AVTypeTree@@H@Z"
-                );
+                generateTypeTree(@object.Pointer, pointer, flags);
             }
         }
 
-        public unsafe TypeTree GetTypeTree(NativeObject @object, TransferInstructionFlags flags)
-        {
-            var tree = new TypeTree(version, strings, resolver);
+        tree.CreateNodes();
 
-            fixed (byte* pointer = tree)
-            {
-                if (HasGetTypeTree)
-                {
-                    getTypeTree(@object.Pointer, flags, pointer);
-                }
-                else
-                {
-                    generateTypeTree(@object.Pointer, pointer, flags);
-                }
-            }
-
-            tree.CreateNodes();
-
-            return tree;
-        }
+        return tree;
     }
 }

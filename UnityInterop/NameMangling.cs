@@ -1,12 +1,9 @@
-﻿using System;
+﻿namespace Unity;
 
-namespace Unity
+using System;
+
+public static class NameMangling
 {
-    public static class NameMangling
-    {
-        public static string Ptr64
-        {
-            get => Environment.Is64BitProcess ? "E" : "";
-        }
-    }
+    public static string Ptr64 
+        => Environment.Is64BitProcess ? "E" : "";
 }

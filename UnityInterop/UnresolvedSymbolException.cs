@@ -1,58 +1,41 @@
-﻿using System;
+﻿namespace Unity;
 
-namespace Unity
+using System;
+
+public sealed class UnresolvedSymbolException : Exception
 {
-    public sealed class UnresolvedSymbolException : Exception
+    private const string DefaultMessage = "Symbol has not been resolved.";
+
+    public string SymbolName { get; }
+
+    public UnresolvedSymbolException()
+        : base(DefaultMessage) { }
+
+    public UnresolvedSymbolException(Exception inner)
+        : base(DefaultMessage, inner) { }
+
+    public UnresolvedSymbolException(string symbol)
+        : base(DefaultMessage) => SymbolName = symbol;
+
+    public UnresolvedSymbolException(string symbol, Exception inner)
+        : base(DefaultMessage, inner) => SymbolName = symbol;
+
+    public UnresolvedSymbolException(string symbol, string message)
+        : base(message) => SymbolName = symbol;
+
+    public UnresolvedSymbolException(string symbol, string message, Exception inner)
+        : base(message, inner) => SymbolName = symbol;
+
+    public override string Message
     {
-        const string DefaultMessage = "Symbol has not been resolved.";
-
-        public string SymbolName { get; }
-
-        public UnresolvedSymbolException()
-            : base(DefaultMessage)
+        get
         {
-        }
+            var message = base.Message;
 
-        public UnresolvedSymbolException(Exception inner)
-            : base(DefaultMessage, inner)
-        {
-        }
+            if (!string.IsNullOrEmpty(message) && !string.IsNullOrEmpty(SymbolName))
+                message += $" ({SymbolName})";
 
-        public UnresolvedSymbolException(string symbol)
-            : base(DefaultMessage)
-        {
-            SymbolName = symbol;
-        }
-
-        public UnresolvedSymbolException(string symbol, Exception inner)
-            : base(DefaultMessage, inner)
-        {
-            SymbolName = symbol;
-        }
-
-        public UnresolvedSymbolException(string symbol, string message)
-            : base(message)
-        {
-            SymbolName = symbol;
-        }
-
-        public UnresolvedSymbolException(string symbol, string message, Exception inner)
-            : base(message, inner)
-        {
-            SymbolName = symbol;
-        }
-
-        public override string Message
-        {
-            get
-            {
-                var message = base.Message;
-
-                if (!string.IsNullOrEmpty(message) && !string.IsNullOrEmpty(SymbolName))
-                    message += $" ({SymbolName})";
-
-                return message;
-            }
+            return message;
         }
     }
 }

@@ -1,95 +1,86 @@
-﻿using System;
+﻿namespace Unity;
+
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 
-namespace Unity
+public class RuntimeTypeArray : IReadOnlyList<RuntimeTypeInfo>
 {
-    public class RuntimeTypeArray : IReadOnlyList<RuntimeTypeInfo>
+    readonly List<RuntimeTypeInfo> types;
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    unsafe delegate NativeTypeArray* GetRuntimeTypesDelegate();
+
+    public RuntimeTypeInfo this[int index] => types[index];
+
+    //The number of runtime types varies from version to version, we need a limit that is at least as 
+    //large as the largest RuntimeTypeId from version 3.4 to 5.5 so that we don't skip over any RuntimeTypes.
+    //The largest seen is version 5.4.6f3 is 1126, but MaxRuntimeTypeId is set to 2000 just in case.
+    const int MaxRuntimeTypeId = 2000;
+
+    public int Count => types.Count;
+
+    public unsafe RuntimeTypeArray(UnityVersion version, SymbolResolver resolver)
     {
-        readonly List<RuntimeTypeInfo> types;
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        unsafe delegate NativeTypeArray* GetRuntimeTypesDelegate();
-
-        public RuntimeTypeInfo this[int index] => types[index];
-
-        //The number of runtime types varies from version to version, we need a limit that is at least as 
-        //large as the largest RuntimeTypeId from version 3.4 to 5.5 so that we don't skip over any RuntimeTypes.
-        //The largest seen is version 5.4.6f3 is 1126, but MaxRuntimeTypeId is set to 2000 just in case.
-        const int MaxRuntimeTypeId = 2000;
-
-        public int Count => types.Count;
-
-        unsafe public RuntimeTypeArray(UnityVersion version, SymbolResolver resolver)
+        NativeTypeArray* runtimeTypes;
+        if (version >= UnityVersion.Unity5_5)
         {
-            NativeTypeArray* runtimeTypes;
-            if (version >= UnityVersion.Unity5_5)
-            {
-                if (version >= UnityVersion.Unity2017_3)
-                {
-                    runtimeTypes = resolver.Resolve<NativeTypeArray>("?ms_runtimeTypes@RTTI@@0URuntimeTypeArray@1@A");
-                }
-                else
-                {
-                    runtimeTypes = resolver.Resolve<NativeTypeArray>("?ms_runtimeTypes@RTTI@@2URuntimeTypeArray@1@A");
-                }
+            runtimeTypes = resolver.Resolve<NativeTypeArray>(UnityVersion.Unity2017_3 <= version 
+                ? "?ms_runtimeTypes@RTTI@@0URuntimeTypeArray@1@A" 
+                : "?ms_runtimeTypes@RTTI@@2URuntimeTypeArray@1@A");
 
-                types = new List<RuntimeTypeInfo>(runtimeTypes->Count);
-                for (int i = 0; i < runtimeTypes->Count; i++)
-                {
-                    var info = (&runtimeTypes->First)[i];
-                    types.Add(new RuntimeTypeInfo(info, resolver, version));
-                }
+            types = new List<RuntimeTypeInfo>(runtimeTypes->Count);
+            for (int i = 0; i < runtimeTypes->Count; i++)
+            {
+                var info = (&runtimeTypes->First)[i];
+                types.Add(new RuntimeTypeInfo(info, resolver, version));
             }
-            else 
-            {
-                delegate* unmanaged[Cdecl]<int, void*> ClassIDToRTTI;
+        }
+        else 
+        {
+            delegate* unmanaged[Cdecl]<int, void*> ClassIDToRTTI;
 
-                if (version >= UnityVersion.Unity5_4)
-                    *(void**)&ClassIDToRTTI = resolver.Resolve($"?ClassIDToRTTI@Object@@SAP{NameMangling.Ptr64}AURTTI@@H@Z");
-                else if (version >= UnityVersion.Unity5_0)
-                    *(void**)&ClassIDToRTTI = resolver.Resolve($"?ClassIDToRTTI@Object@@SAP{NameMangling.Ptr64}AURTTI@1@H@Z");
-                else
-                    *(void**)&ClassIDToRTTI = resolver.Resolve($"?ClassIDToRTTI@Object@@SAP{NameMangling.Ptr64}AURTTI@1@H@Z");
+            if (UnityVersion.Unity5_4 <= version)
+                *(void**)&ClassIDToRTTI = resolver.Resolve($"?ClassIDToRTTI@Object@@SAP{NameMangling.Ptr64}AURTTI@@H@Z");
+            else if (UnityVersion.Unity5_0 <= version)
+                *(void**)&ClassIDToRTTI = resolver.Resolve($"?ClassIDToRTTI@Object@@SAP{NameMangling.Ptr64}AURTTI@1@H@Z");
+            else
+                *(void**)&ClassIDToRTTI = resolver.Resolve($"?ClassIDToRTTI@Object@@SAP{NameMangling.Ptr64}AURTTI@1@H@Z");
 
-                types = new List<RuntimeTypeInfo>();
-                for(int i = 0; i < MaxRuntimeTypeId; i++)
-                {
-                    var info = ClassIDToRTTI(i);
-                    if(info != null)
-                    {
-                        types.Add(new RuntimeTypeInfo((IntPtr)info, resolver, version));
-                    }
-                }
-            }
-            foreach(RuntimeTypeInfo type in types)
+            types = new List<RuntimeTypeInfo>();
+            for(int i = 0; i < MaxRuntimeTypeId; i++)
             {
-                if(type.Base != null)
+                var info = ClassIDToRTTI(i);
+                if(info != null)
                 {
-                    var baseType = GetFromName(type.Base.FullName);
-                    baseType.Derived.Add(type);
+                    types.Add(new RuntimeTypeInfo((IntPtr)info, resolver, version));
                 }
             }
         }
-
-        public IEnumerator<RuntimeTypeInfo> GetEnumerator()
+        foreach(RuntimeTypeInfo type in types)
         {
-            return types.GetEnumerator();
+            if(type.Base != null)
+            {
+                var baseType = GetFromName(type.Base.FullName);
+                baseType.Derived.Add(type);
+            }
         }
-
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return types.GetEnumerator();
-        }
-
-        unsafe struct NativeTypeArray
-        {
-            public int Count;
-            public IntPtr First;
-        }
-
-        private RuntimeTypeInfo GetFromName(string fullName) => types.Where(x => x.FullName == fullName).FirstOrDefault();
     }
+
+    public IEnumerator<RuntimeTypeInfo> GetEnumerator()
+        => types.GetEnumerator();
+
+    IEnumerator IEnumerable.GetEnumerator()
+        => types.GetEnumerator();
+
+    struct NativeTypeArray
+    {
+        public int Count;
+        public IntPtr First;
+    }
+
+    private RuntimeTypeInfo GetFromName(string fullName)
+        => types.FirstOrDefault(x => x.FullName == fullName);
 }

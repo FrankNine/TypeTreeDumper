@@ -1,61 +1,50 @@
-﻿using System;
+﻿namespace Unity;
 
-namespace Unity
+using System;
+
+public partial class TypeTreeNode
 {
-    public unsafe partial class TypeTreeNode
+    internal interface ITypeTreeNodeImpl
     {
-        readonly TypeTree owner;
+        public short Version { get; }
+        public byte Level { get; }
+        public TypeFlags TypeFlags { get; }
+        public uint TypeStrOffset { get; }
+        public uint NameStrOffset { get; }
+        public int ByteSize { get; }
+        public int Index { get; }
+        public TransferMetaFlags MetaFlag { get; }
+        ref byte GetPinnableReference();
+    }
 
-        readonly ITypeTreeNodeImpl node;
+    private readonly ITypeTreeNodeImpl node;
+    private readonly TypeTree owner;
 
 
-        public short Version => node.Version;
+    public short Version => node.Version;
+    public byte Level => node.Level;
+    public TypeFlags TypeFlags => node.TypeFlags;
+    public uint TypeStrOffset => node.TypeStrOffset;
+    public uint NameStrOffset => node.NameStrOffset;
+    public int ByteSize => node.ByteSize;
+    public int Index => node.Index;
+    public TransferMetaFlags MetaFlag => node.MetaFlag;
 
-        public byte Level => node.Level;
+    public string TypeName => owner.GetString(node.TypeStrOffset);
+    public string Name => owner.GetString(node.NameStrOffset);
 
-        public TypeFlags TypeFlags => node.TypeFlags;
+    internal TypeTreeNode(ITypeTreeNodeImpl impl, TypeTree owner)
+    {
+        node = impl;
+        this.owner = owner;
+    }
 
-        public uint TypeStrOffset => node.TypeStrOffset;
+    public TypeTreeNode(UnityVersion version, TypeTree owner, IntPtr address)
+    {
+        this.owner = owner;
 
-        public uint NameStrOffset => node.NameStrOffset;
-
-        public string TypeName => owner.GetString(node.TypeStrOffset);
-
-        public string Name => owner.GetString(node.NameStrOffset);
-
-        public int ByteSize => node.ByteSize;
-
-        public int Index => node.Index;
-
-        public TransferMetaFlags MetaFlag => node.MetaFlag;
-
-        internal TypeTreeNode(ITypeTreeNodeImpl impl, TypeTree owner)
-        {
-            this.owner = owner;
-            node       = impl;
-        }
-
-        public TypeTreeNode(UnityVersion version, TypeTree owner, IntPtr address)
-        {
-            this.owner = owner;
-
-            if (version >= UnityVersion.Unity2019_1)
-                node = new V2019_1(address);
-            else
-                node = new V5_0(address);
-        }
-
-        internal interface ITypeTreeNodeImpl
-        {
-            public short Version { get; }
-            public byte Level { get; }
-            public TypeFlags TypeFlags { get; }
-            public uint TypeStrOffset { get; }
-            public uint NameStrOffset { get; }
-            public int ByteSize { get; }
-            public int Index { get; }
-            public TransferMetaFlags MetaFlag { get;  }
-            ref byte GetPinnableReference();
-        }
+        node = UnityVersion.Unity2019_1 <= version 
+            ? new V2019_1(address) 
+            : new V5_0(address);
     }
 }

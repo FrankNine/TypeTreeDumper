@@ -1,105 +1,112 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
+using System.Collections.Generic;
+
 using Unity;
 
-namespace TypeTreeDumper
+namespace TypeTreeDumper;
+
+internal class UnityClass
 {
-    internal class UnityClass
+    public string Name { get; set; }
+    public string Namespace { get; set; }
+    public string FullName { get; set; }
+    public string Module { get; set; }
+    public int TypeID { get; set; }
+    public string Base { get; set; }
+    public List<string> Derived { get; set; }
+    public uint DescendantCount { get; set; }
+    public int Size { get; set; }
+    public uint TypeIndex { get; set; }
+    public bool IsAbstract { get; set; }
+    public bool IsSealed { get; set; }
+    public bool IsEditorOnly { get; set; }
+    public bool IsStripped { get; set; }
+
+    public UnityNode EditorRootNode { get; set; }
+    public UnityNode ReleaseRootNode { get; set; }
+
+    public UnityClass(RuntimeTypeInfo runtimeType)
     {
-        public string Name { get; set; }
-        public string Namespace { get; set; }
-        public string FullName { get; set; }
-        public string Module { get; set; }
-        public int TypeID { get; set; }
-        public string Base { get; set; }
-        public List<string> Derived { get; set; }
-        public uint DescendantCount { get; set; }
-        public int Size { get; set; }
-        public uint TypeIndex { get; set; }
-        public bool IsAbstract { get; set; }
-        public bool IsSealed { get; set; }
-        public bool IsEditorOnly { get; set; }
-        public bool IsStripped { get; set; }
-        public UnityNode EditorRootNode { get; set; }
-        public UnityNode ReleaseRootNode { get; set; }
+        Name = runtimeType.Name;
+        Namespace = runtimeType.Namespace;
+        FullName = runtimeType.FullName;
+        Module = runtimeType.Module;
+        TypeID = (int)runtimeType.PersistentTypeID;
+        Base = runtimeType.Base?.Name ?? "";
+        Derived = runtimeType.Derived.ConvertAll(d => d?.Name ?? "");
+        DescendantCount = runtimeType.DescendantCount;
+        Size = runtimeType.Size;
+        TypeIndex = runtimeType.TypeIndex;
+        IsAbstract = runtimeType.IsAbstract;
+        IsSealed = runtimeType.IsSealed;
+        IsEditorOnly = runtimeType.IsEditorOnly;
+        IsStripped = runtimeType.IsStripped;
+    }
 
-        public UnityClass() { }
-        public UnityClass(RuntimeTypeInfo runtimeType)
+    public static List<UnityClass> MakeList
+    (
+        UnityEngine engine,
+        TransferInstructionFlags releaseFlags,
+        TransferInstructionFlags editorFlags
+    )
+    {
+        var result = new List<UnityClass>();
+
+        foreach (var type in engine.RuntimeTypes.ToArray().OrderBy(x => (int)x.PersistentTypeID))
         {
-            Name = runtimeType.Name;
-            Namespace = runtimeType.Namespace;
-            FullName = runtimeType.FullName;
-            Module = runtimeType.Module;
-            TypeID = (int)runtimeType.PersistentTypeID;
-            Base = runtimeType.Base?.Name ?? "";
-            Derived = runtimeType.Derived.ConvertAll(d => d?.Name ?? "");
-            DescendantCount = runtimeType.DescendantCount;
-            Size = runtimeType.Size;
-            TypeIndex = runtimeType.TypeIndex;
-            IsAbstract = runtimeType.IsAbstract;
-            IsSealed = runtimeType.IsSealed;
-            IsEditorOnly = runtimeType.IsEditorOnly;
-            IsStripped = runtimeType.IsStripped;
-        }
+            var next = new UnityClass(type);
 
-        public static List<UnityClass> MakeList(UnityEngine engine, TransferInstructionFlags releaseFlags, TransferInstructionFlags editorFlags)
-        {
-            var result = new List<UnityClass>();
-
-            foreach (var type in engine.RuntimeTypes.ToArray().OrderBy(x => (int)x.PersistentTypeID))
+            var iter = type;
+            while (iter.IsAbstract)
             {
-                var next = new UnityClass(type);
-
-                var iter = type;
-                while (iter.IsAbstract)
-                {
-                     if (iter.Base == null)
-                        break;
-                     else
-                        iter = iter.Base;
-                }
-
-                var obj = engine.ObjectFactory.GetOrProduce(iter);
-
-                if (obj != null)
-                {
-                    TypeTree editorTree = engine.TypeTreeFactory.GetTypeTree(obj, editorFlags);
-                    TypeTree releaseTree = engine.TypeTreeFactory.GetTypeTree(obj, releaseFlags);
-
-                    next.EditorRootNode = CreateRootNode(editorTree);
-                    next.ReleaseRootNode = CreateRootNode(releaseTree);
-                }
-
-                result.Add(next);
+                if (iter.Base == null)
+                    break;
+                
+                iter = iter.Base;
             }
 
-            return result;
-        }
+            var obj = engine.ObjectFactory.GetOrProduce(iter);
 
-        /// <summary>
-        /// Converts a Type Tree into a Node Tree
-        /// </summary>
-        /// <param name="tree"></param>
-        /// <returns>The root of the node tree</returns>
-        private static UnityNode CreateRootNode(TypeTree tree)
-        {
-            if (tree == null)
-                throw new ArgumentNullException(nameof(tree));
-            UnityNode root = new UnityNode(tree[0]);
-            UnityNode current = root;
-            for (int i = 1; i < tree.Count; i++)
+            if (obj != null)
             {
-                TypeTreeNode treeNode = tree[i];
+                TypeTree editorTree = engine.TypeTreeFactory.GetTypeTree(obj, editorFlags);
+                TypeTree releaseTree = engine.TypeTreeFactory.GetTypeTree(obj, releaseFlags);
 
-                while (treeNode.Level <= current.Level)
-                    current = current.Parent;
-
-                UnityNode newNode = new UnityNode(current, treeNode);
-                current.SubNodes.Add(newNode);
-                current = newNode;
+                next.EditorRootNode = CreateRootNode(editorTree);
+                next.ReleaseRootNode = CreateRootNode(releaseTree);
             }
-            return root;
+
+            result.Add(next);
         }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Converts a Type Tree into a Node Tree
+    /// </summary>
+    /// <param name="tree"></param>
+    /// <returns>The root of the node tree</returns>
+    private static UnityNode CreateRootNode(TypeTree tree)
+    {
+        if (tree == null)
+            throw new ArgumentNullException(nameof(tree));
+        
+        UnityNode root = new UnityNode(tree[0]);
+        UnityNode current = root;
+        for (int i = 1; i < tree.Count; i++)
+        {
+            TypeTreeNode treeNode = tree[i];
+
+            while (treeNode.Level <= current.Level)
+                current = current.Parent;
+
+            var newNode = new UnityNode(current, treeNode);
+            current.SubNodes.Add(newNode);
+            current = newNode;
+        }
+
+        return root;
     }
 }

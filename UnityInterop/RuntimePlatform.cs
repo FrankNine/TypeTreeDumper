@@ -1,7 +1,6 @@
-﻿namespace Unity
+﻿namespace Unity;
+
+public enum RuntimePlatform
 {
-    public enum RuntimePlatform
-    {
-        WindowsEditor = 7
-    }
+    WindowsEditor = 7
 }

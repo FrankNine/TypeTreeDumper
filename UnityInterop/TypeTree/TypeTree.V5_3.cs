@@ -1,55 +1,49 @@
-﻿using System.Collections.Generic;
-using System.Runtime.InteropServices;
+﻿namespace Unity;
+
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using ManagedTypeTree = Unity.TypeTree;
 
-namespace Unity
+public partial class TypeTree
 {
-    public partial class TypeTree
+    // Unity 5.3 - 2018.4
+    unsafe class V5_3 : ITypeTreeImpl
     {
-        // Unity 5.3 - 2018.4
-        unsafe class V5_3 : ITypeTreeImpl
+        internal struct TypeTree
         {
-            internal TypeTree Tree;
+            public DynamicArray<TypeTreeNode.V5_0.TypeTreeNode, MemLabelId> Nodes;
+            public DynamicArray<byte, MemLabelId> StringBuffer;
+            public DynamicArray<uint, MemLabelId> ByteOffsets;
+        }
 
-            public IReadOnlyList<byte> StringBuffer => Tree.StringBuffer;
+        private TypeTree Tree;
 
-            public IReadOnlyList<TypeTreeNode> Nodes => m_Nodes;
+        public IReadOnlyList<TypeTreeNode> Nodes => m_Nodes;
+        public IReadOnlyList<byte> StringBuffer => Tree.StringBuffer;
+        public IReadOnlyList<uint> ByteOffsets => Tree.ByteOffsets;
 
-            public IReadOnlyList<uint> ByteOffsets => Tree.ByteOffsets;
+        private TypeTreeNode[] m_Nodes;
 
-            private TypeTreeNode[] m_Nodes;
+        public V5_3(ManagedTypeTree owner, SymbolResolver resolver)
+        {
+            var constructor = (delegate* unmanaged[Cdecl]<TypeTree*, MemLabelId*, void>)resolver.Resolve($"??0TypeTree@@Q{NameMangling.Ptr64}AA@A{NameMangling.Ptr64}BUMemLabelId@@@Z");
+            var label = resolver.Resolve<MemLabelId>("?kMemTypeTree@@3UMemLabelId@@A");
+            TypeTree tree;
+            constructor(&tree, label);
+            Tree = tree;
+        }
 
-            public V5_3(ManagedTypeTree owner, SymbolResolver resolver)
-            {
-                var constructor = (delegate* unmanaged[Cdecl]<TypeTree*, MemLabelId*, void>)resolver.Resolve($"??0TypeTree@@Q{NameMangling.Ptr64}AA@A{NameMangling.Ptr64}BUMemLabelId@@@Z");
-                var label = resolver.Resolve<MemLabelId>("?kMemTypeTree@@3UMemLabelId@@A");
-                TypeTree tree;
-                constructor(&tree, label);
-                Tree = tree;
-            }
+        public ref byte GetPinnableReference()
+            => ref Unsafe.As<TypeTree, byte>(ref Tree);
 
-            public ref byte GetPinnableReference()
-            {
-                return ref Unsafe.As<TypeTree, byte>(ref Tree);
-            }
+        public void CreateNodes(ManagedTypeTree owner)
+        {
+            var nodes = new TypeTreeNode[Tree.Nodes.Size];
 
-            public void CreateNodes(ManagedTypeTree owner)
-            {
-                var nodes = new TypeTreeNode[Tree.Nodes.Size];
+            for (int i = 0; i < nodes.Length; i++)
+                nodes[i] = new TypeTreeNode(new TypeTreeNode.V5_0(Tree.Nodes.Ptr[i]), owner);
 
-                for (int i = 0; i < nodes.Length; i++)
-                    nodes[i] = new TypeTreeNode(new TypeTreeNode.V5_0(Tree.Nodes.Ptr[i]), owner);
-
-                m_Nodes = nodes;
-            }
-
-            internal struct TypeTree
-            {
-                public DynamicArray<TypeTreeNode.V5_0.TypeTreeNode, MemLabelId> Nodes;
-                public DynamicArray<byte, MemLabelId> StringBuffer;
-                public DynamicArray<uint, MemLabelId> ByteOffsets;
-            }
+            m_Nodes = nodes;
         }
     }
 }

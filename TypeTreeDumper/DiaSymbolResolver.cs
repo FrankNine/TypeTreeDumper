@@ -1,112 +1,113 @@
-﻿using System;
+﻿namespace TypeTreeDumper;
+
+using System;
 using System.Threading;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+
 using TerraFX.Interop.Windows;
+
 using Unity;
 
-namespace TypeTreeDumper
+public unsafe class DiaSymbolResolver : SymbolResolver
 {
-    public unsafe class DiaSymbolResolver : SymbolResolver
+    readonly ThreadLocal<ComPtr<IDiaSession>> session;
+
+    readonly ProcessModule module;
+
+    readonly ConcurrentDictionary<string, IntPtr> cache;
+
+    public DiaSymbolResolver(ProcessModule module)
     {
-        readonly ThreadLocal<ComPtr<IDiaSession>> session;
+        session = new ThreadLocal<ComPtr<IDiaSession>>(CreateSession);
+        this.module = module;
+        cache = new ConcurrentDictionary<string, IntPtr>();
+    }
 
-        readonly ProcessModule module;
+    public override IEnumerable<string> FindSymbolsMatching(Regex expression)
+    {
+        var options = NameSearchOptions.RegularExpression;
 
-        readonly ConcurrentDictionary<string, IntPtr> cache;
+        if (expression.Options.HasFlag(RegexOptions.IgnoreCase))
+            options |= NameSearchOptions.CaseInsensitive;
 
-        public DiaSymbolResolver(ProcessModule module)
+        using ComPtr<IDiaSymbol> globalScope = default;
+        using ComPtr<IDiaEnumSymbols> enumSymbols = default;
+        int count = InitializeAndGetCount();
+
+        for (int i = 0; i < count; i++)
         {
-            session      = new ThreadLocal<ComPtr<IDiaSession>>(CreateSession);
-            this.module  = module;
-            cache        = new ConcurrentDictionary<string, IntPtr>();
+            yield return GetSymbolName(i);
         }
 
-        public override IEnumerable<string> FindSymbolsMatching(Regex expression)
+        int InitializeAndGetCount()
         {
-            var options = NameSearchOptions.RegularExpression;
-
-            if (expression.Options.HasFlag(RegexOptions.IgnoreCase))
-                options |= NameSearchOptions.CaseInsensitive;
-
-            using ComPtr<IDiaSymbol> globalScope = default;
-            using ComPtr<IDiaEnumSymbols> enumSymbols = default;
-            int count = InitializeAndGetCount();
-
-            for (int i = 0; i < count; i++)
+            unsafe
             {
-                yield return GetSymbolName(i);
-            }
+                session.Value.Get()->get_globalScope(globalScope.GetAddressOf());
 
-            int InitializeAndGetCount()
-            {
-                unsafe
-                {
-                    session.Value.Get()->get_globalScope(globalScope.GetAddressOf());
+                fixed (char* pExpression = expression.ToString())
+                    globalScope.Get()->findChildren(SymTagEnum.SymTagPublicSymbol, (ushort*)pExpression, (uint)options, enumSymbols.GetAddressOf());
 
-                    fixed (char* pExpression = expression.ToString())
-                        globalScope.Get()->findChildren(SymTagEnum.SymTagPublicSymbol, (ushort*)pExpression, (uint)options, enumSymbols.GetAddressOf());
-
-                    int count;
-                    enumSymbols.Get()->get_Count(&count);
-                    return count;
-                }
-            }
-
-            string GetSymbolName(int index)
-            {
-                unsafe
-                {
-                    using ComPtr<IDiaSymbol> symbol = default;
-                    enumSymbols.Get()->Item((uint)index, symbol.GetAddressOf());
-                    ushort* name;
-                    symbol.Get()->get_name(&name);
-                    return new string((char*)name);
-                }
+                int count;
+                enumSymbols.Get()->get_Count(&count);
+                return count;
             }
         }
 
-        protected override void* GetAddressOrZero(string name)
+        string GetSymbolName(int index)
         {
-            if (cache.TryGetValue(name, out IntPtr address))
-                return (void*)address;
+            unsafe
+            {
+                using ComPtr<IDiaSymbol> symbol = default;
+                enumSymbols.Get()->Item((uint)index, symbol.GetAddressOf());
+                ushort* name;
+                symbol.Get()->get_name(&name);
+                return new string((char*)name);
+            }
+        }
+    }
 
-            using ComPtr<IDiaSymbol> globalScope      = default;
-            using ComPtr<IDiaEnumSymbols> enumSymbols = default;
-            session.Value.Get()->get_globalScope(globalScope.GetAddressOf());
-
-            fixed (char* pName = name)
-                globalScope.Get()->findChildren(SymTagEnum.SymTagPublicSymbol, (ushort*)pName, 0, enumSymbols.GetAddressOf());
-
-            int count;
-            enumSymbols.Get()->get_Count(&count);
-
-            if (count == 0)
-                return null;
-
-            uint rva;
-            using ComPtr<IDiaSymbol> symbol = default;
-            enumSymbols.Get()->Item(0, symbol.GetAddressOf());
-            symbol.Get()->get_relativeVirtualAddress(&rva);
-            
-            address = new IntPtr((nint)module.BaseAddress + rva);
-            cache.TryAdd(name, address);
+    protected override void* GetAddressOrZero(string name)
+    {
+        if (cache.TryGetValue(name, out IntPtr address))
             return (void*)address;
-        }
 
-        ComPtr<IDiaSession> CreateSession()
-        {
-            IDiaDataSource* source;
-            ComPtr<IDiaSession> session = default;
-            DiaSourceFactory.CreateDiaSource(&source);
+        using ComPtr<IDiaSymbol> globalScope = default;
+        using ComPtr<IDiaEnumSymbols> enumSymbols = default;
+        session.Value.Get()->get_globalScope(globalScope.GetAddressOf());
 
-            fixed (char* pFileName = module.FileName)
-                source->loadDataForExe((ushort*)pFileName, null, null);
+        fixed (char* pName = name)
+            globalScope.Get()->findChildren(SymTagEnum.SymTagPublicSymbol, (ushort*)pName, 0, enumSymbols.GetAddressOf());
 
-            source->openSession(session.GetAddressOf());
-            return session;
-        }
+        int count;
+        enumSymbols.Get()->get_Count(&count);
+
+        if (count == 0)
+            return null;
+
+        uint rva;
+        using ComPtr<IDiaSymbol> symbol = default;
+        enumSymbols.Get()->Item(0, symbol.GetAddressOf());
+        symbol.Get()->get_relativeVirtualAddress(&rva);
+
+        address = new IntPtr((nint)module.BaseAddress + rva);
+        cache.TryAdd(name, address);
+        return (void*)address;
+    }
+
+    private ComPtr<IDiaSession> CreateSession()
+    {
+        IDiaDataSource* source;
+        ComPtr<IDiaSession> session = default;
+        DiaSourceFactory.CreateDiaSource(&source);
+
+        fixed (char* pFileName = module.FileName)
+            source->loadDataForExe((ushort*)pFileName, null, null);
+
+        source->openSession(session.GetAddressOf());
+        return session;
     }
 }
