@@ -29,6 +29,8 @@
 
         readonly delegate* unmanaged[Cdecl]<byte*, byte*, int, MemoryLabelIdentifier, ObjectCreationMode, void*> s_ProduceV2023_1_0a2;
 
+        readonly delegate* unmanaged[Cdecl]<byte*, byte*, int, MemoryLabelIdentifier, ObjectCreationMode, void*> s_ProduceV6000_2;
+
         bool HasGetSceneVisibilityState => version >= UnityVersion.Unity2019_1;
 
         bool HasGetSpriteAtlasDatabase => version >= UnityVersion.Unity2017_1;
@@ -60,10 +62,14 @@
                 s_ProduceV3_5 = (delegate* unmanaged[Cdecl]<int, int, MemLabelId, ObjectCreationMode, void*>)resolver.Resolve($"?Produce@Object@@SAP{NameMangling.Ptr64}AV1@HHUMemLabelId@@W4ObjectCreationMode@@@Z");
             else if (version < UnityVersion.Unity2017_2)
                 s_ProduceV5_5 = (delegate* unmanaged[Cdecl]<byte*, int, MemLabelId, ObjectCreationMode, void*>)resolver.Resolve($"?Produce@Object@@SAP{NameMangling.Ptr64}AV1@P{NameMangling.Ptr64}BVType@Unity@@HUMemLabelId@@W4ObjectCreationMode@@@Z");
-            else
+            else if (version < UnityVersion.Unity6000_2)
             {
                 s_ProduceV2017_2 = (delegate* unmanaged[Cdecl]<byte*, byte*, int, MemLabelId, ObjectCreationMode, void*>)resolver.Resolve($"?Produce@Object@@CAP{NameMangling.Ptr64}AV1@P{NameMangling.Ptr64}BVType@Unity@@0HUMemLabelId@@W4ObjectCreationMode@@@Z");
                 s_ProduceV2023_1_0a2 = (delegate* unmanaged[Cdecl]<byte*, byte*, int, MemoryLabelIdentifier, ObjectCreationMode, void*>)s_ProduceV2017_2;
+            }
+            else
+            {
+                s_ProduceV6000_2 = (delegate* unmanaged[Cdecl]<byte*, byte*, int, MemoryLabelIdentifier, ObjectCreationMode, void*>)resolver.Resolve($"?Produce@Object@@CAP{NameMangling.Ptr64}AV1@P{NameMangling.Ptr64}BVType@Unity@@0UEntityId@@UMemLabelId@@W4ObjectCreationMode@@@Z");
             }
 
             if (version >= UnityVersion.Unity3_5 && version < UnityVersion.Unity2022_2)
@@ -145,10 +151,15 @@
                         MemLabelId labelId = kMemBaseObject != null ? *kMemBaseObject : MemLabelId.DefaultMemBaseObject_2020_2_6;
                         ptr = s_ProduceV2017_2(typePtr, typePtr, instanceID, labelId, creationMode);
                     }
-                    else
+                    else if (version < UnityVersion.Unity6000_2)
                     {
                         MemoryLabelIdentifier labelId = kMemBaseObject != null ? *(MemoryLabelIdentifier*)kMemBaseObject : MemLabelId.DefaultMemBaseObject_2020_2_6.Identifier;
                         ptr = s_ProduceV2023_1_0a2(typePtr, typePtr, instanceID, labelId, creationMode);
+                    }
+                    else
+                    {
+                        MemoryLabelIdentifier labelId = kMemBaseObject != null ? *(MemoryLabelIdentifier*)kMemBaseObject : MemLabelId.DefaultMemBaseObject_2020_2_6.Identifier;
+                        ptr = s_ProduceV6000_2(typePtr, typePtr, instanceID, labelId, creationMode);
                     }
                 }
             }

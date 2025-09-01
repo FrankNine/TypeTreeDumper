@@ -1,3 +1,4 @@
+.idea/
 .vs/
 bin/
 obj/
@@ -7,3 +8,4 @@ Dia2Lib/*.dll
 Dia2Lib/*.tlb
 packages
 launchsettings.json
+*.DotSettings.user
